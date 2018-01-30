@@ -1,0 +1,223 @@
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Swiss popular votes with European voting systems</title>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+</head>
+<body class="container-fluid">
+  <h3>Voting system comparison</h3>
+  <div id="plots"></div>
+  <table id="votesTable" class="table table-sm table-bordered">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Name</th>
+        <th colspan="2">Swiss system</th>
+        <th colspan="2">European system (treaty of Lisbon)</th>
+        <th colspan="2">Penrose method</th>
+      </tr>
+      <tr class="small">
+        <td></td>
+        <td></td>
+        <td>Approval voters</td>
+        <td>States/Stände</td>
+        <td>Member votes</td>
+        <td>EU Population</td>
+        <!-- <td>Member votes</td> -->
+        <td>Weighted approval</td>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <p>Jura has missing values before 18.02.1979. They are replaced by 0.</p>
+
+  <table id="penroseWeights" class="table table-sm table-bordered">
+    <thead>
+      <tr>
+        <th>Canton</th>
+        <th>Voters</th>
+        <th>% of total voters</th>
+        <th>Penrose voting weight</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div id="plot1"></div>
+  <script type="text/javascript">
+  var halfCantons = ["Obwalden", "Nidwalden", "Appenzell Ausserrhoden", "Appenzell Innerrhoden", "Basel-Stadt", "Basel-Landschaft"];
+  var votes_data = {};
+  var votes_stats = {
+    'CH': 0,
+    'NOT_CH': 0,
+    'EU': 0,
+    'NOT_EU': 0,
+    'PENROSE': 0,
+    'NOT_PENROSE': 0,
+    'CH_NOT_EU': 0,
+    'NOT_CH_EU': 0,
+    'CH_NOT_PENROSE': 0,
+    'NOT_CH_PENROSE': 0
+  };
+  var penroseWeights = {};
+  // sqrt(82.5) / (sqrt(82.5)+ sqrt(60) + sqrt(60) + sqrt(57) + sqrt(41) + sqrt(38)+ sqrt(22) + sqrt(16) + sqrt(11) + sqrt(10)*4  + sqrt(8)*3 +sqrt(5)*3+sqrt(3)*4)
+
+  $(document).ready(function(){
+    function parse(data){
+      // parse csv
+      var lines = data.split("\n");
+      // don't parse headers
+      for (var l=3; l<lines.length; l++){
+        if (lines[l].trim() == "") continue;
+        // "Kanton"	"Datum und Vorlage"	"Stimmberechtigte"	"Ja"	"Ja in %"
+        var values = lines[l].replace(/[""]/g, '').replace(/[\.]{3}/g, "0").split("\t");
+
+        // calculate votes for each system
+        if (votes_data[values[1]] === undefined) votes_data[values[1]] = {};
+
+        if (values[0] == 'Schweiz'){
+          votes_data[values[1]][values[0]] = parseInt(values[2]); // save the voters
+          votes_data[values[1]]['CH'] = {
+            "Volk": parseFloat(values[4]),
+            "Stande": 0
+          }
+          votes_data[values[1]]['EU'] = {
+            "Members_P": 0,
+            "Population_P": parseFloat(values[4]),
+          }
+          votes_data[values[1]]['Penrose'] = {
+            // sqrt(population_member) / sum(sqrt(population_all_members))
+            "ApprovalSqrtVoters": 0,
+            "SumOfSqrtVoters": 0
+          }
+        }
+        else {
+          values[4] = parseFloat(values[4]);
+
+          // CH
+          if (values[4] > 50.0){
+            if (values[0] in halfCantons)
+              votes_data[values[1]]['CH']['Stande'] += 0.5;
+            else
+              votes_data[values[1]]['CH']['Stande'] += 1;
+          }
+
+          // European
+          if (values[4] > 50.0){
+            if (values[0] in halfCantons)
+              votes_data[values[1]]['EU']['Members_P'] += 0.5 / 26 * 100;
+            else
+              votes_data[values[1]]['EU']['Members_P'] += 1 / 26 * 100;
+          }
+
+          // Penrose
+          if (values[4] > 50.0){
+            if (values[0] in halfCantons)
+              votes_data[values[1]]['Penrose']['ApprovalSqrtVoters'] += 0.5 * Math.sqrt(parseInt(values[2]));
+            else
+              votes_data[values[1]]['Penrose']['ApprovalSqrtVoters'] += 1 * Math.sqrt(parseInt(values[2]));
+          }
+          votes_data[values[1]]['Penrose']['SumOfSqrtVoters'] += Math.sqrt(parseInt(values[2]));
+
+          // State Penrose voting weights of cantons
+          if (values[1] == "21.05.2017 Energiegesetz"){
+            penroseWeights[values[0]] = Math.sqrt(parseInt(values[2]));
+          }
+        }
+
+        // if (l > 3000) break;
+      }
+
+      // display data
+      l = 0;
+      for (var vote in votes_data){
+        var values = votes_data[vote];
+        var date = vote.substr(0, "21.05.2017 ".length).trim();
+        var name = vote.substr(date.length, vote.length);
+        votes_stats[vote] = {};
+
+        var row = '';
+        row += "<tr><td>" + date + "</td><td>" + name +"</td>";
+
+        // Swiss
+        if (values['CH']['Volk'] > 50.0) cls1 = "success";
+        else cls1 = "danger";
+        if (values['CH']['Stande'] > 13) cls2 = "success";
+        else cls2 = "danger";
+        row += "<td class='" + cls1 + "'>" + values['CH']['Volk'].toFixed(1) + " %</td><td class='" + cls2 + "'>" + (values['CH']['Stande']/26*100).toFixed(1) + " %</td>";
+
+        if (cls1 == "success" && cls2 == "success") votes_stats[vote]['CH'] = true;
+        else votes_stats[vote]['CH'] = false;
+
+        // European
+        if (values['EU']['Members_P'] > 55.0) cls1 = "success";
+        else cls1 = "danger";
+        if (values['EU']['Population_P'] > 65.0) cls2 = "success";
+        else cls2 = "danger";
+        row += "<td class='" + cls1 + "'>" + values['EU']['Members_P'].toFixed(1) + " %</td><td class='" + cls2 + "'>" + values['EU']['Population_P'].toFixed(1) + " %</td>";
+
+        if (cls1 == "success" && cls2 == "success") votes_stats[vote]['EU'] = true;
+        else votes_stats[vote]['EU'] = false;
+
+        // Penrose
+        // cls1 = "";
+        if (values['Penrose']['ApprovalSqrtVoters']/values['Penrose']['SumOfSqrtVoters'] > 0.5) cls2 = "success";
+        else cls2 = "danger";
+        row += "<td class='" + cls2 + "'>" + (values['Penrose']['ApprovalSqrtVoters']/values['Penrose']['SumOfSqrtVoters']*100).toFixed(1) + " %</td>";
+
+        if (cls2 == "success") votes_stats[vote]['Penrose'] = true;
+        else votes_stats[vote]['Penrose'] = false;
+
+        if (votes_stats[vote]['CH']){
+          votes_stats['CH'] += 1;
+          if (! votes_stats[vote]['EU']) votes_stats['CH_NOT_EU'] += 1;
+          if (! votes_stats[vote]['Penrose']) votes_stats['CH_NOT_PENROSE'] += 1;
+        } else {
+          votes_stats['NOT_CH'] += 1;
+          if (votes_stats[vote]['EU']) votes_stats['NOT_CH_EU'] += 1;
+          if (votes_stats[vote]['Penrose']) votes_stats['NOT_CH_PENROSE'] += 1;
+        }
+        if (votes_stats[vote]['EU']) votes_stats['EU'] += 1;
+        else votes_stats['NOT_EU'] += 1;
+        if (votes_stats[vote]['Penrose']) votes_stats['PENROSE'] += 1;
+        else votes_stats['NOT_PENROSE'] += 1;
+
+
+        row += "</tr>";
+        $('#votesTable tbody').append(row);
+        if (++l > 200) break;
+      }
+
+      console.log(votes_stats);
+
+      var cantons = Object.keys(penroseWeights).sort();
+      var sum = 0;
+      for (c=0; c<cantons.length; c++){
+        sum += penroseWeights[cantons[c]];
+      }
+      for (c=0; c<cantons.length; c++){
+        var canton = cantons[c];
+        var row = "<tr><td>" + canton + "</td><td>" + Math.pow(penroseWeights[canton], 2).toFixed(0) + "</td>";
+        row += "<td>" + (Math.pow(penroseWeights[canton], 2) / 5356575 * 100).toFixed(1) + " %</td>";
+        row += "<td>" + (penroseWeights[canton] / sum * 100).toFixed(1) + " %</td></tr>";
+        $('#penroseWeights tbody').append(row);
+      }
+    } // end function
+
+    $.ajax({
+      url: "px-x-1703030000_100.csv",
+      contentType: 'Content-type: text/plain; charset=iso-8859-1',
+      success: parse,
+      beforeSend: function(jqXHR) {
+       jqXHR.overrideMimeType('text/html;charset=iso-8859-1');
+      }
+    });
+
+
+
+  }); // end $.ready
+  </script>
+</body>
+</html>
