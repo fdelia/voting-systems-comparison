@@ -45,6 +45,10 @@
     <tbody></tbody>
   </table>
 
+  <table id="system_stats">
+    <tbody></tbody>
+  </table>
+
   <div id="plot1"></div>
   <script type="text/javascript">
   var halfCantons = ["Obwalden", "Nidwalden", "Appenzell Ausserrhoden", "Appenzell Innerrhoden", "Basel-Stadt", "Basel-Landschaft"];
@@ -142,7 +146,7 @@
         row += "<tr><td>" + date + "</td><td>" + name +"</td>";
 
         // Swiss
-        if (values['CH']['Volk'] > 50.0) cls1 = "success";
+        if (values['CH']['Volk'] >= 50.0) cls1 = "success";
         else cls1 = "danger";
         if (values['CH']['Stande'] > 13) cls2 = "success";
         else cls2 = "danger";
@@ -152,7 +156,7 @@
         else votes_stats[vote]['CH'] = false;
 
         // European
-        if (values['EU']['Members_P'] > 55.0) cls1 = "success";
+        if (values['EU']['Members_P'] >= 55.0) cls1 = "success";
         else cls1 = "danger";
         if (values['EU']['Population_P'] > 65.0) cls2 = "success";
         else cls2 = "danger";
@@ -190,7 +194,9 @@
         if (++l > 200) break;
       }
 
+      console.log(votes_data);
       console.log(votes_stats);
+      $('#system_stats tbdoy').append(`<tr></tr>`);
 
       var cantons = Object.keys(penroseWeights).sort();
       var sum = 0;
